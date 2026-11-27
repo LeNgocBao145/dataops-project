@@ -78,9 +78,11 @@ jobs:
           dbt deps
 
       - name: Compile DBT models
+        env:
+          SA_PASSWORD: ${{ secrets.SA_PASSWORD }}
         run: |
           cd dbt
-          dbt compile --profiles-dir . || true
+          dbt compile --target ci --profiles-dir . || true
         continue-on-error: true
 
       - name: Upload compiled artifacts
@@ -114,9 +116,11 @@ jobs:
           dbt deps
 
       - name: Generate documentation
+        env:
+          SA_PASSWORD: ${{ secrets.SA_PASSWORD }}
         run: |
           cd dbt
-          dbt docs generate --profiles-dir . || true
+          dbt docs generate --target ci --profiles-dir . || true
         continue-on-error: true
 
       - name: Upload documentation
