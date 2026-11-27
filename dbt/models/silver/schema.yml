@@ -1,51 +1,160 @@
 version: 2
 
 models:
-  - name: slvr_customers
-    description: Cleaned and standardized customer data
+  - name: slvr_orders
+    description: "Deduplicated and conformed sales order headers with mapped order status labels and validity flag."
     columns:
-      - name: customer_id
-        description: Unique customer identifier
+      - name: sales_order_id
+        description: "Primary key for sales orders."
         tests:
           - unique
           - not_null
-      - name: full_name
-        description: Customer full name
-      - name: email_promotion
-        description: Email promotion preference
+      - name: order_date
+        description: "Order placement date."
+        tests:
+          - not_null
+      - name: order_month
+        description: "First day of the order month for monthly aggregation."
+      - name: order_status
+        description: "Human-readable order status mapped from integer status code."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['In Process', 'Approved', 'Backordered', 'Rejected', 'Shipped', 'Cancelled']
+      - name: is_valid_order
+        description: "Boolean flag (1=valid order, 0=cancelled order where status_code=6)."
+        tests:
+          - not_null
+      - name: customer_id
+        description: "Foreign key to slvr_customers."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('slvr_customers')
+              field: customer_id
+      - name: territory_id
+        description: "Foreign key to slvr_territories."
+        tests:
+          - relationships:
+              to: ref('slvr_territories')
+              field: territory_id
+      - name: total_due
+        description: "Total amount due from the customer."
+
+  - name: slvr_order_items
+    description: "Deduplicated sales order line items with surrogate key and pre-computed gross, discount, and net line amounts."
+    columns:
+      - name: order_item_sk
+        description: "Surrogate primary key generated from sales_order_id and sales_order_detail_id."
+        tests:
+          - unique
+          - not_null
+      - name: sales_order_id
+        description: "Foreign key to slvr_orders."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('slvr_orders')
+              field: sales_order_id
+      - name: sales_order_detail_id
+        description: "Line item sequence identifier within the order."
+        tests:
+          - not_null
+      - name: product_id
+        description: "Foreign key to slvr_products."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('slvr_products')
+              field: product_id
+      - name: order_qty
+        description: "Quantity ordered."
+        tests:
+          - not_null
+      - name: unit_price
+        description: "Unit selling price."
+        tests:
+          - not_null
+      - name: gross_line_amount
+        description: "Gross line revenue before discount (order_qty * unit_price)."
+      - name: discount_amount
+        description: "Total discount amount for the line (order_qty * unit_price * unit_price_discount)."
+      - name: net_line_amount
+        description: "Net line revenue after discount (gross_line_amount - discount_amount)."
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.expression_is_true:
+          expression: "order_qty > 0"
+      - dbt_utils.expression_is_true:
+          expression: "unit_price >= 0"
+      - dbt_utils.expression_is_true:
+          expression: "net_line_amount >= 0"
 
   - name: slvr_products
-    description: Cleaned and standardized product data
+    description: "Conformed product catalog joining Product, ProductSubcategory, and ProductCategory with 'Uncategorized' fallback."
     columns:
       - name: product_id
-        description: Unique product identifier
+        description: "Primary key for products."
         tests:
           - unique
           - not_null
       - name: product_name
-        description: Product name
+        description: "Product name."
+        tests:
+          - not_null
+      - name: product_number
+        description: "Unique SKU / product number."
+      - name: standard_cost
+        description: "Standard manufacturing/acquisition cost."
+        tests:
+          - not_null
       - name: list_price
-        description: Product list price
+        description: "Product list price."
+        tests:
+          - not_null
+      - name: subcategory_name
+        description: "Product subcategory name, defaulting to 'Uncategorized' when NULL."
+        tests:
+          - not_null
+      - name: category_name
+        description: "Product category name, defaulting to 'Uncategorized' when NULL."
         tests:
           - not_null
 
-  - name: slvr_sales_orders
-    description: Cleaned sales order data with calculated fields
+  - name: slvr_territories
+    description: "Deduplicated sales territories with country and geographic group."
     columns:
-      - name: sales_order_id
-        description: Sales order identifier
+      - name: territory_id
+        description: "Primary key for sales territories."
+        tests:
+          - unique
+          - not_null
+      - name: territory_name
+        description: "Sales territory name."
         tests:
           - not_null
-      - name: order_detail_id
-        description: Order detail identifier
+      - name: country_region_code
+        description: "ISO country or region code."
         tests:
           - not_null
-      - name: line_total
-        description: Total amount for line item
+      - name: territory_group
+        description: "Geographic sales region group."
+
+  - name: slvr_customers
+    description: "Conformed customer dimension combining Customer, Person, and Store entities."
+    columns:
+      - name: customer_id
+        description: "Primary key for customers."
+        tests:
+          - unique
+          - not_null
+      - name: customer_type
+        description: "Customer classification: Store, Individual, or Unknown."
+        tests:
+          - accepted_values:
+              values: ['Store', 'Individual', 'Unknown']
+      - name: customer_name
+        description: "Resolved store name or person full name."
         tests:
           - not_null
-    tests:
-      - dbt_utils.unique_combination_of_columns:
-          combination_of_columns:
-            - sales_order_id
-            - order_detail_id
