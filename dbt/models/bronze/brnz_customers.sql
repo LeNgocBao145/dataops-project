@@ -4,26 +4,17 @@
     )
 }}
 
-with source as (
-    select * from {{ source('adventureworks', 'Customer') }}
-),
-
-person as (
-    select * from {{ source('adventureworks_person', 'Person') }}
-),
-
-staged as (
-    select
-        c.CustomerID,
-        p.FirstName,
-        p.LastName,
-        p.EmailPromotion,
-        c.StoreID,
-        c.TerritoryID,
-        c.ModifiedDate as last_modified_date
-    from source c
-    left join person p
-        on c.PersonID = p.BusinessEntityID
+WITH source AS (
+    SELECT *
+    FROM {{ source('sales', 'Customer') }}
 )
 
-select * from staged 
+SELECT
+    CAST(CustomerID AS INT) AS customer_id,
+    CAST(PersonID AS INT) AS person_id,
+    CAST(StoreID AS INT) AS store_id,
+    CAST(TerritoryID AS INT) AS territory_id,
+    TRIM(CAST(AccountNumber AS NVARCHAR(50))) AS account_number,
+    CAST(ModifiedDate AS DATETIME2) AS modified_date,
+    CAST(GETDATE() AS DATETIME2) AS loaded_at
+FROM source
