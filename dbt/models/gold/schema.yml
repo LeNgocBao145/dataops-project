@@ -14,6 +14,9 @@ models:
         tests:
           - unique
           - not_null
+          - valid_date_range:
+              min_date: '2011-01-01'
+              max_date: '2015-12-31'
 
   - name: dim_products
     description: "Gold product dimension with category hierarchy and pricing."
@@ -25,10 +28,28 @@ models:
           - not_null
       - name: product_name
         description: "Product name."
+        tests:
+          - not_null
       - name: category_name
-        description: "Top-level product category."
+        description: "Top-level product category. 'Uncategorized' is used as a fallback for products without a category."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Bikes', 'Clothing', 'Components', 'Accessories', 'Uncategorized']
       - name: subcategory_name
         description: "Product subcategory."
+        tests:
+          - not_null
+      - name: standard_cost
+        description: "Standard manufacturing cost."
+        tests:
+          - positive_values:
+              allow_zero: true
+      - name: list_price
+        description: "Product list price."
+        tests:
+          - positive_values:
+              allow_zero: true
 
   - name: dim_customers
     description: "Gold customer dimension combining individual and store customers."
@@ -40,8 +61,14 @@ models:
           - not_null
       - name: customer_name
         description: "Customer or store display name."
+        tests:
+          - not_null
       - name: customer_type
         description: "Store or Individual."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Store', 'Individual', 'Unknown']
 
   - name: dim_territories
     description: "Gold sales territory dimension."
@@ -53,8 +80,18 @@ models:
           - not_null
       - name: territory_name
         description: "Territory name."
+        tests:
+          - not_null
       - name: country_region_code
         description: "Country/region ISO code."
+        tests:
+          - not_null
+      - name: territory_group
+        description: "Geographic group."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['North America', 'Europe', 'Pacific']
 
   - name: fct_sales
     description: "Gold sales fact table at order line-item grain (excludes cancelled orders)."
@@ -71,6 +108,13 @@ models:
           - relationships:
               to: ref('dim_date')
               field: date_key
+      - name: order_date
+        description: "Date the order was placed."
+        tests:
+          - not_null
+          - valid_date_range:
+              min_date: '2011-01-01'
+              max_date: '2015-12-31'
       - name: product_id
         description: "Foreign key to dim_products.product_id."
         tests:
@@ -91,12 +135,35 @@ models:
           - relationships:
               to: ref('dim_territories')
               field: territory_id
+      - name: order_qty
+        description: "Quantity ordered."
+        tests:
+          - not_null
+          - positive_values
+      - name: unit_price
+        description: "Unit selling price."
+        tests:
+          - not_null
+          - positive_values:
+              allow_zero: true
       - name: net_line_amount
         description: "Net line revenue after discount."
+        tests:
+          - not_null
+          - positive_values:
+              allow_zero: true
       - name: line_cogs
         description: "Cost of goods sold for the line item."
+        tests:
+          - positive_values:
+              allow_zero: true
       - name: line_gross_profit
         description: "Gross profit for the line item."
+    tests:
+      - dbt_utils.expression_is_true:
+          expression: "net_line_amount >= 0"
+      - dbt_utils.expression_is_true:
+          expression: "order_qty > 0"
 
   - name: gld_mart_sales_by_territory
     description: "Monthly sales performance mart by country and territory for BI dashboards."
@@ -115,16 +182,32 @@ models:
         description: "Sales territory name."
       - name: total_orders
         description: "Distinct count of valid sales orders."
+        tests:
+          - positive_values
       - name: total_units_sold
         description: "Total quantity of units sold."
+        tests:
+          - positive_values
       - name: gross_revenue
         description: "Total gross revenue before discounts."
+        tests:
+          - positive_values:
+              allow_zero: true
       - name: total_discount
         description: "Total discount amount given."
+        tests:
+          - positive_values:
+              allow_zero: true
       - name: net_revenue
         description: "Total net revenue after discounts."
+        tests:
+          - positive_values:
+              allow_zero: true
       - name: avg_order_value
         description: "Average order value (net_revenue / total_orders)."
+        tests:
+          - positive_values:
+              allow_zero: true
     tests:
       - dbt_utils.unique_combination_of_columns:
           combination_of_columns:
@@ -141,22 +224,42 @@ models:
           - not_null
       - name: product_name
         description: "Product name."
+        tests:
+          - not_null
       - name: category_name
         description: "Product category."
+        tests:
+          - not_null
       - name: subcategory_name
         description: "Product subcategory."
+        tests:
+          - not_null
       - name: times_ordered
         description: "Distinct count of orders containing this product."
+        tests:
+          - positive_values
       - name: total_qty_sold
         description: "Total units sold."
+        tests:
+          - positive_values
       - name: net_revenue
         description: "Total net revenue."
+        tests:
+          - positive_values:
+              allow_zero: true
       - name: total_cogs
         description: "Total cost of goods sold."
+        tests:
+          - positive_values:
+              allow_zero: true
       - name: gross_profit
         description: "Total gross profit (net_revenue - total_cogs)."
       - name: gross_margin_pct
         description: "Gross profit margin percentage."
+        tests:
+          - percentage_range:
+              min_value: -100
+              max_value: 100
 
   - name: gld_mart_customer_rfm_analytics
     description: "Customer RFM (Recency, Frequency, Monetary) segmentation mart for CRM & Marketing."
@@ -168,12 +271,24 @@ models:
           - not_null
       - name: recency_days
         description: "Days elapsed since the customer's last valid order relative to dataset max date."
+        tests:
+          - not_null
+          - positive_values:
+              allow_zero: true
       - name: frequency
         description: "Total distinct valid orders placed by the customer."
+        tests:
+          - not_null
+          - positive_values
       - name: monetary
         description: "Total net spend by the customer."
+        tests:
+          - not_null
+          - positive_values:
+              allow_zero: true
       - name: customer_segment
         description: "RFM customer segment (VIP, Loyal, Potential Loyalist, At Risk, Churned)."
         tests:
+          - not_null
           - accepted_values:
               values: ['VIP', 'Loyal', 'Potential Loyalist', 'At Risk', 'Churned']

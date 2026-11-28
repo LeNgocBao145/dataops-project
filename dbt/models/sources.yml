@@ -4,14 +4,18 @@ sources:
   - name: sales
     database: AdventureWorks2014
     schema: Sales
-    description: "Sales domain tables from AdventureWorks2014 OLTP database"
+    description: "Sales domain tables from AdventureWorks2014 OLTP database. Data reflects historical AdventureWorks transactional records (2011–2014). Expect all sources to show WARN freshness status because this is a static sample database — not a live feed."
     freshness:
       warn_after: {count: 24, period: hour}
-      error_after: {count: 7300, period: day}
+      error_after: {count: 10000, period: day}
     loaded_at_field: ModifiedDate
     tables:
       - name: SalesOrderHeader
-        description: "General sales order information (dates, customer, territory, status, totals)."
+        description: "General sales order information (dates, customer, territory, status, totals). Expected data latency: ≤ 24 h for live feeds; this is a static historical DB (data last updated 2014-07-07)."
+        freshness:
+          warn_after: {count: 24, period: hour}
+          error_after: {count: 10000, period: day}
+        loaded_at_field: ModifiedDate
         columns:
           - name: SalesOrderID
             description: "Primary key for sales order."
@@ -26,10 +30,14 @@ sources:
           - name: TotalDue
             description: "Total due from customer."
           - name: ModifiedDate
-            description: "Date and time the record was last updated."
+            description: "Date and time the record was last updated. Used as freshness field."
 
       - name: SalesOrderDetail
-        description: "Individual products associated with a specific sales order."
+        description: "Individual products associated with a specific sales order. Expected data latency: ≤ 24 h."
+        freshness:
+          warn_after: {count: 24, period: hour}
+          error_after: {count: 10000, period: day}
+        loaded_at_field: ModifiedDate
         columns:
           - name: SalesOrderID
             description: "Primary key. Foreign key to SalesOrderHeader.SalesOrderID."
@@ -46,10 +54,14 @@ sources:
           - name: LineTotal
             description: "Per product subtotal."
           - name: ModifiedDate
-            description: "Date and time the record was last updated."
+            description: "Date and time the record was last updated. Used as freshness field."
 
       - name: SalesTerritory
-        description: "Sales territory lookup table."
+        description: "Sales territory lookup table. Static reference data — changes infrequently. Expected latency: ≤ 24 h."
+        freshness:
+          warn_after: {count: 24, period: hour}
+          error_after: {count: 10000, period: day}
+        loaded_at_field: ModifiedDate
         columns:
           - name: TerritoryID
             description: "Primary key for SalesTerritory records."
@@ -64,10 +76,14 @@ sources:
           - name: SalesLastYear
             description: "Sales in the territory the previous year."
           - name: ModifiedDate
-            description: "Date and time the record was last updated."
+            description: "Date and time the record was last updated. Used as freshness field."
 
       - name: Customer
-        description: "Current customer information."
+        description: "Current customer information. Expected data latency: ≤ 24 h."
+        freshness:
+          warn_after: {count: 24, period: hour}
+          error_after: {count: 10000, period: day}
+        loaded_at_field: ModifiedDate
         columns:
           - name: CustomerID
             description: "Primary key."
@@ -80,10 +96,14 @@ sources:
           - name: AccountNumber
             description: "Unique number identifying the customer."
           - name: ModifiedDate
-            description: "Date and time the record was last updated."
+            description: "Date and time the record was last updated. Used as freshness field."
 
       - name: Store
-        description: "Customers (resellers) of Adventure Works products."
+        description: "Customers (resellers) of Adventure Works products. Expected data latency: ≤ 24 h."
+        freshness:
+          warn_after: {count: 24, period: hour}
+          error_after: {count: 10000, period: day}
+        loaded_at_field: ModifiedDate
         columns:
           - name: BusinessEntityID
             description: "Primary key. Foreign key to Person.BusinessEntity."
@@ -92,19 +112,23 @@ sources:
           - name: SalesPersonID
             description: "ID of the sales person assigned to the customer."
           - name: ModifiedDate
-            description: "Date and time the record was last updated."
+            description: "Date and time the record was last updated. Used as freshness field."
 
   - name: production
     database: AdventureWorks2014
     schema: Production
-    description: "Production & product catalog tables from AdventureWorks2014"
+    description: "Production & product catalog tables from AdventureWorks2014. Product/category data is essentially static (last updated 2014-02-08). Expected latency: ≤ 24 h."
     freshness:
       warn_after: {count: 24, period: hour}
-      error_after: {count: 7300, period: day}
+      error_after: {count: 10000, period: day}
     loaded_at_field: ModifiedDate
     tables:
       - name: Product
-        description: "Products sold or used in the manufacturing of sold products."
+        description: "Products sold or used in the manufacturing of sold products. Expected data latency: ≤ 24 h."
+        freshness:
+          warn_after: {count: 24, period: hour}
+          error_after: {count: 10000, period: day}
+        loaded_at_field: ModifiedDate
         columns:
           - name: ProductID
             description: "Primary key for Product records."
@@ -119,10 +143,14 @@ sources:
           - name: ProductSubcategoryID
             description: "Product is a member of this product subcategory."
           - name: ModifiedDate
-            description: "Date and time the record was last updated."
+            description: "Date and time the record was last updated. Used as freshness field."
 
       - name: ProductSubcategory
-        description: "Product subcategories."
+        description: "Product subcategories. Static reference — updated infrequently. Expected latency: ≤ 24 h."
+        freshness:
+          warn_after: {count: 24, period: hour}
+          error_after: {count: 10000, period: day}
+        loaded_at_field: ModifiedDate
         columns:
           - name: ProductSubcategoryID
             description: "Primary key for ProductSubcategory records."
@@ -131,34 +159,42 @@ sources:
           - name: Name
             description: "Subcategory description."
           - name: ModifiedDate
-            description: "Date and time the record was last updated."
+            description: "Date and time the record was last updated. Used as freshness field."
 
       - name: ProductCategory
-        description: "High-level product categorization."
+        description: "High-level product categorization. Static reference — 4 categories only. Expected latency: ≤ 24 h."
+        freshness:
+          warn_after: {count: 24, period: hour}
+          error_after: {count: 10000, period: day}
+        loaded_at_field: ModifiedDate
         columns:
           - name: ProductCategoryID
             description: "Primary key for ProductCategory records."
           - name: Name
             description: "Category description."
           - name: ModifiedDate
-            description: "Date and time the record was last updated."
+            description: "Date and time the record was last updated. Used as freshness field."
 
   - name: person
     database: AdventureWorks2014
     schema: Person
-    description: "Person & contact tables from AdventureWorks2014"
+    description: "Person & contact tables from AdventureWorks2014. Person records include employees, customer contacts, and vendor contacts. Expected data latency: ≤ 24 h."
     freshness:
       warn_after: {count: 24, period: hour}
-      error_after: {count: 7300, period: day}
+      error_after: {count: 10000, period: day}
     loaded_at_field: ModifiedDate
     tables:
       - name: Person
-        description: "Human beings involved with AdventureWorks: employees, customer contacts, and vendor contacts."
+        description: "Human beings involved with AdventureWorks: employees, customer contacts, and vendor contacts. Expected data latency: ≤ 24 h."
+        freshness:
+          warn_after: {count: 24, period: hour}
+          error_after: {count: 10000, period: day}
+        loaded_at_field: ModifiedDate
         columns:
           - name: BusinessEntityID
             description: "Primary key for Person records."
           - name: PersonType
-            description: "Primary type of person."
+            description: "Primary type of person: EM=Employee, IN=Individual customer, SC=Store contact, SP=Sales person, VC=Vendor contact, GC=General contact."
           - name: FirstName
             description: "First name of the person."
           - name: MiddleName
@@ -166,6 +202,6 @@ sources:
           - name: LastName
             description: "Last name of the person."
           - name: EmailPromotion
-            description: "Email promotion preference."
+            description: "Email promotion preference: 0=No promotions, 1=Adventure Works promotions only, 2=All promotions."
           - name: ModifiedDate
-            description: "Date and time the record was last updated."
+            description: "Date and time the record was last updated. Used as freshness field."

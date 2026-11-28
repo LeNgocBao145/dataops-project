@@ -1,8 +1,8 @@
-name: 'dbt_sqlserver_project'
+name: 'dataops_project'
 version: '1.0.0'
 config-version: 2
 
-profile: 'dbt_airflow_project'
+profile: 'dataops_project'
 
 model-paths: ["models"]
 analysis-paths: ["analyses"]
@@ -17,7 +17,7 @@ clean-targets:
   - "dbt_packages"
 
 models:
-  dbt_sqlserver_project:
+  dataops_project:
     bronze:
       +materialized: view
       +schema: bronze
@@ -25,5 +25,10 @@ models:
       +materialized: table
       +schema: silver
     gold:
-      +materialized: table 
+      +materialized: table
       +schema: gold
+
+tests:
+  dataops_project:
+    +store_failures: true
+    +schema: dbt_test_failures

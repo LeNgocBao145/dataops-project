@@ -13,8 +13,17 @@ models:
         description: "Order placement date."
         tests:
           - not_null
+          - valid_date_range:
+              min_date: '2011-01-01'
+              max_date: '2015-12-31'
+      - name: due_date
+        description: "Date the order is due to customer."
+      - name: ship_date
+        description: "Date the order was shipped."
       - name: order_month
         description: "First day of the order month for monthly aggregation."
+        tests:
+          - not_null
       - name: order_status
         description: "Human-readable order status mapped from integer status code."
         tests:
@@ -25,6 +34,8 @@ models:
         description: "Boolean flag (1=valid order, 0=cancelled order where status_code=6)."
         tests:
           - not_null
+          - accepted_values:
+              values: [0, 1]
       - name: customer_id
         description: "Foreign key to slvr_customers."
         tests:
@@ -40,6 +51,13 @@ models:
               field: territory_id
       - name: total_due
         description: "Total amount due from the customer."
+        tests:
+          - positive_values:
+              allow_zero: true
+    tests:
+      - date_order:
+          start_date_column: order_date
+          end_date_column: due_date
 
   - name: slvr_order_items
     description: "Deduplicated sales order line items with surrogate key and pre-computed gross, discount, and net line amounts."
@@ -71,18 +89,36 @@ models:
         description: "Quantity ordered."
         tests:
           - not_null
+          - positive_values
       - name: unit_price
         description: "Unit selling price."
         tests:
           - not_null
+          - positive_values:
+              allow_zero: true
+      - name: unit_price_discount
+        description: "Discount ratio applied (0.0 to 1.0)."
+        tests:
+          - percentage_range:
+              min_value: 0
+              max_value: 1
       - name: gross_line_amount
         description: "Gross line revenue before discount (order_qty * unit_price)."
+        tests:
+          - not_null
+          - positive_values:
+              allow_zero: true
       - name: discount_amount
         description: "Total discount amount for the line (order_qty * unit_price * unit_price_discount)."
+        tests:
+          - positive_values:
+              allow_zero: true
       - name: net_line_amount
         description: "Net line revenue after discount (gross_line_amount - discount_amount)."
         tests:
           - not_null
+          - positive_values:
+              allow_zero: true
     tests:
       - dbt_utils.expression_is_true:
           expression: "order_qty > 0"
@@ -90,6 +126,10 @@ models:
           expression: "unit_price >= 0"
       - dbt_utils.expression_is_true:
           expression: "net_line_amount >= 0"
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - sales_order_id
+            - sales_order_detail_id
 
   - name: slvr_products
     description: "Conformed product catalog joining Product, ProductSubcategory, and ProductCategory with 'Uncategorized' fallback."
@@ -105,14 +145,21 @@ models:
           - not_null
       - name: product_number
         description: "Unique SKU / product number."
+        tests:
+          - not_null
+          - unique
       - name: standard_cost
         description: "Standard manufacturing/acquisition cost."
         tests:
           - not_null
+          - positive_values:
+              allow_zero: true
       - name: list_price
         description: "Product list price."
         tests:
           - not_null
+          - positive_values:
+              allow_zero: true
       - name: subcategory_name
         description: "Product subcategory name, defaulting to 'Uncategorized' when NULL."
         tests:
@@ -134,12 +181,17 @@ models:
         description: "Sales territory name."
         tests:
           - not_null
+          - unique
       - name: country_region_code
         description: "ISO country or region code."
         tests:
           - not_null
       - name: territory_group
         description: "Geographic sales region group."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['North America', 'Europe', 'Pacific']
 
   - name: slvr_customers
     description: "Conformed customer dimension combining Customer, Person, and Store entities."
@@ -152,6 +204,7 @@ models:
       - name: customer_type
         description: "Customer classification: Store, Individual, or Unknown."
         tests:
+          - not_null
           - accepted_values:
               values: ['Store', 'Individual', 'Unknown']
       - name: customer_name
