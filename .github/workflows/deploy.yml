@@ -14,6 +14,23 @@ on:
         options:
           - test
           - production
+      action:
+        description: 'Deployment action'
+        required: false
+        default: 'deploy'
+        type: choice
+        options:
+          - deploy
+          - rollback
+      rollback_ref:
+        description: 'Git ref/SHA to rollback to (only for rollback, defaults to HEAD~1)'
+        required: false
+        default: 'HEAD~1'
+        type: string
+
+permissions:
+  contents: read
+  actions: read
 
 env:
   DBT_PROFILES_DIR: ./dbt
@@ -22,15 +39,17 @@ jobs:
   deploy-test:
     name: Deploy to Test
     runs-on: ubuntu-22.04
-    if: github.ref == 'refs/heads/develop' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'test')
+    if: >-
+      github.ref == 'refs/heads/develop' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'test' && github.event.inputs.action != 'rollback')
     environment: test
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
 
@@ -43,7 +62,6 @@ jobs:
             -e "SA_PASSWORD=$SA_PASSWORD" \
             mcr.microsoft.com/mssql/server:2019-latest
 
-          # Wait for SQL Server to be healthy
           echo "Waiting for SQL Server to be ready..."
           for i in {1..30}; do
             if docker exec -e SA_PASSWORD="$SA_PASSWORD" sqlserver_test bash -c '/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$SA_PASSWORD" -Q "SELECT 1" 2>/dev/null || /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -Q "SELECT 1" 2>/dev/null'; then
@@ -85,7 +103,7 @@ jobs:
           chmod +x scripts/deploy.sh
           ./scripts/deploy.sh test test
 
-      - name: Run smoke tests
+      - name: Run smoke tests (post-deployment health check)
         env:
           SQL_SERVER: ${{ secrets.TEST_SQL_SERVER }}
           SQL_USER: ${{ secrets.TEST_SQL_USER }}
@@ -93,27 +111,59 @@ jobs:
         run: |
           python scripts/smoke_tests.py --database AdventureWorks2014_Test
 
-      - name: Upload artifacts
+      - name: Track deployment history and success rate
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python scripts/track_deployment.py \
+            --environment test \
+            --target test \
+            --status "${{ job.status }}"
+
+      - name: Upload artifacts and logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-deployment
+          name: test-deployment-${{ github.run_id }}
           path: |
             dbt/target/
             backups/
+            logs/
+          if-no-files-found: warn
+
+      - name: Notify team
+        if: always()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          echo "Deployment to test completed with status: $JOB_STATUS"
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            COLOR="good"
+            [ "$JOB_STATUS" != "success" ] && COLOR="danger"
+            curl -X POST -H 'Content-type: application/json' \
+              --data "{\"attachments\":[{\"color\":\"$COLOR\",\"title\":\"Test Deployment: $JOB_STATUS\",\"text\":\"Commit: ${{ github.sha }}\nAuthor: ${{ github.actor }}\nWorkflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}]}" \
+              "$SLACK_WEBHOOK_URL"
+          else
+            echo "SLACK_WEBHOOK_URL secret not set. Skipping Slack notification."
+          fi
 
   deploy-production:
     name: Deploy to Production
     runs-on: ubuntu-22.04
-    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    if: >-
+      github.ref == 'refs/heads/main' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production' && github.event.inputs.action != 'rollback')
     environment: production
     needs: []
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
 
@@ -126,7 +176,6 @@ jobs:
             -e "SA_PASSWORD=$SA_PASSWORD" \
             mcr.microsoft.com/mssql/server:2019-latest
 
-          # Wait for SQL Server to be healthy
           echo "Waiting for SQL Server to be ready..."
           for i in {1..30}; do
             if docker exec -e SA_PASSWORD="$SA_PASSWORD" sqlserver_prod bash -c '/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$SA_PASSWORD" -Q "SELECT 1" 2>/dev/null || /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -Q "SELECT 1" 2>/dev/null'; then
@@ -168,13 +217,34 @@ jobs:
           chmod +x scripts/deploy.sh
           ./scripts/deploy.sh production prod
 
-      - name: Run smoke tests
+      - name: Run smoke tests (post-deployment health check)
         env:
           SQL_SERVER: ${{ secrets.PROD_SQL_SERVER }}
           SQL_USER: ${{ secrets.PROD_SQL_USER }}
           SQL_PASSWORD: ${{ secrets.PROD_SQL_PASSWORD }}
         run: |
           python scripts/smoke_tests.py --database AdventureWorks2014_Prod
+
+      - name: Track deployment history and success rate
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python scripts/track_deployment.py \
+            --environment production \
+            --target prod \
+            --status "${{ job.status }}"
+
+      - name: Upload artifacts and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-deployment-${{ github.run_id }}
+          path: |
+            dbt/target/
+            backups/
+            logs/
+          if-no-files-found: warn
 
       - name: Notify team
         if: always()
@@ -191,4 +261,134 @@ jobs:
               "$SLACK_WEBHOOK_URL"
           else
             echo "SLACK_WEBHOOK_URL secret not set. Skipping Slack notification."
+          fi
+
+  rollback:
+    name: Rollback Environment
+    runs-on: ubuntu-22.04
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'rollback'
+    environment: ${{ github.event.inputs.environment }}
+
+    steps:
+      - name: Checkout code at rollback ref
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.rollback_ref || 'HEAD~1' }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Start SQL Server Container
+        env:
+          SA_PASSWORD: ${{ secrets.SA_PASSWORD }}
+        run: |
+          docker run -d --name sqlserver_rollback -p 1433:1433 \
+            -e "ACCEPT_EULA=Y" \
+            -e "SA_PASSWORD=$SA_PASSWORD" \
+            mcr.microsoft.com/mssql/server:2019-latest
+
+          for i in {1..30}; do
+            if docker exec -e SA_PASSWORD="$SA_PASSWORD" sqlserver_rollback bash -c '/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$SA_PASSWORD" -Q "SELECT 1" 2>/dev/null || /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -Q "SELECT 1" 2>/dev/null'; then
+              echo "SQL Server is ready!"
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Install dependencies
+        run: |
+          pip install dbt-sqlserver pyodbc
+
+      - name: Setup Database for Rollback
+        env:
+          SA_PASSWORD: ${{ secrets.SA_PASSWORD }}
+          ENV_NAME: ${{ github.event.inputs.environment }}
+          TEST_USER: ${{ secrets.TEST_SQL_USER }}
+          TEST_PASSWORD: ${{ secrets.TEST_SQL_PASSWORD }}
+          PROD_USER: ${{ secrets.PROD_SQL_USER }}
+          PROD_PASSWORD: ${{ secrets.PROD_SQL_PASSWORD }}
+        run: |
+          if [ "$ENV_NAME" = "production" ]; then
+            DB_NAME="AdventureWorks2014_Prod"
+            DB_USER="$PROD_USER"
+            DB_PASS="$PROD_PASSWORD"
+          else
+            DB_NAME="AdventureWorks2014_Test"
+            DB_USER="$TEST_USER"
+            DB_PASS="$TEST_PASSWORD"
+          fi
+          curl -L -o /tmp/AdventureWorks2014.bak https://github.com/Microsoft/sql-server-samples/releases/download/adventureworks/AdventureWorks2014.bak
+          docker cp /tmp/AdventureWorks2014.bak sqlserver_rollback:/tmp/AdventureWorks2014.bak
+          SQLCMD="docker exec sqlserver_rollback /opt/mssql-tools18/bin/sqlcmd -C"
+          if ! docker exec sqlserver_rollback test -f /opt/mssql-tools18/bin/sqlcmd; then
+            SQLCMD="docker exec sqlserver_rollback /opt/mssql-tools/bin/sqlcmd"
+          fi
+          $SQLCMD -S localhost -U sa -P "$SA_PASSWORD" -Q "RESTORE DATABASE AdventureWorks2014 FROM DISK = '/tmp/AdventureWorks2014.bak' WITH MOVE 'AdventureWorks2014_Data' TO '/var/opt/mssql/data/AdventureWorks2014.mdf', MOVE 'AdventureWorks2014_Log' TO '/var/opt/mssql/data/AdventureWorks2014_log.ldf'"
+          $SQLCMD -S localhost -U sa -P "$SA_PASSWORD" -Q "RESTORE DATABASE $DB_NAME FROM DISK = '/tmp/AdventureWorks2014.bak' WITH MOVE 'AdventureWorks2014_Data' TO '/var/opt/mssql/data/${DB_NAME}.mdf', MOVE 'AdventureWorks2014_Log' TO '/var/opt/mssql/data/${DB_NAME}_log.ldf'"
+          $SQLCMD -S localhost -U sa -P "$SA_PASSWORD" \
+            -v DB_USER="$DB_USER" -v DB_PASS="$DB_PASS" -v DB_NAME="$DB_NAME" \
+            -Q 'IF NOT EXISTS (SELECT * FROM sys.server_principals WHERE name = '\''$(DB_USER)'\'') CREATE LOGIN [$(DB_USER)] WITH PASSWORD = '\''$(DB_PASS)'\''; USE AdventureWorks2014; IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = '\''$(DB_USER)'\'') CREATE USER [$(DB_USER)] FOR LOGIN [$(DB_USER)]; ALTER ROLE db_owner ADD MEMBER [$(DB_USER)]; USE [$(DB_NAME)]; IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = '\''$(DB_USER)'\'') CREATE USER [$(DB_USER)] FOR LOGIN [$(DB_USER)]; ALTER ROLE db_owner ADD MEMBER [$(DB_USER)];'
+
+      - name: Execute Rollback Deployment
+        env:
+          ENV_NAME: ${{ github.event.inputs.environment }}
+          TEST_SQL_SERVER: ${{ secrets.TEST_SQL_SERVER }}
+          TEST_SQL_USER: ${{ secrets.TEST_SQL_USER }}
+          TEST_SQL_PASSWORD: ${{ secrets.TEST_SQL_PASSWORD }}
+          PROD_SQL_SERVER: ${{ secrets.PROD_SQL_SERVER }}
+          PROD_SQL_USER: ${{ secrets.PROD_SQL_USER }}
+          PROD_SQL_PASSWORD: ${{ secrets.PROD_SQL_PASSWORD }}
+        run: |
+          chmod +x scripts/deploy.sh
+          if [ "$ENV_NAME" = "production" ]; then
+            ./scripts/deploy.sh production prod
+          else
+            ./scripts/deploy.sh test test
+          fi
+
+      - name: Run smoke tests after rollback
+        env:
+          ENV_NAME: ${{ github.event.inputs.environment }}
+          TEST_SQL_SERVER: ${{ secrets.TEST_SQL_SERVER }}
+          TEST_SQL_USER: ${{ secrets.TEST_SQL_USER }}
+          TEST_SQL_PASSWORD: ${{ secrets.TEST_SQL_PASSWORD }}
+          PROD_SQL_SERVER: ${{ secrets.PROD_SQL_SERVER }}
+          PROD_SQL_USER: ${{ secrets.PROD_SQL_USER }}
+          PROD_SQL_PASSWORD: ${{ secrets.PROD_SQL_PASSWORD }}
+        run: |
+          if [ "$ENV_NAME" = "production" ]; then
+            SQL_SERVER="$PROD_SQL_SERVER" SQL_USER="$PROD_SQL_USER" SQL_PASSWORD="$PROD_SQL_PASSWORD" \
+              python scripts/smoke_tests.py --database AdventureWorks2014_Prod
+          else
+            SQL_SERVER="$TEST_SQL_SERVER" SQL_USER="$TEST_SQL_USER" SQL_PASSWORD="$TEST_SQL_PASSWORD" \
+              python scripts/smoke_tests.py --database AdventureWorks2014_Test
+          fi
+
+      - name: Track rollback in deployment history
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ENV_NAME: ${{ github.event.inputs.environment }}
+        run: |
+          TARGET=$([ "$ENV_NAME" = "production" ] && echo "prod" || echo "test")
+          python scripts/track_deployment.py \
+            --environment "$ENV_NAME (rollback)" \
+            --target "$TARGET" \
+            --status "${{ job.status }}"
+
+      - name: Notify team of rollback
+        if: always()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            COLOR="warning"
+            [ "$JOB_STATUS" != "success" ] && COLOR="danger"
+            curl -X POST -H 'Content-type: application/json' \
+              --data "{\"attachments\":[{\"color\":\"$COLOR\",\"title\":\"Rollback (${{ github.event.inputs.environment }}): $JOB_STATUS\",\"text\":\"Ref: ${{ github.event.inputs.rollback_ref }}\nActor: ${{ github.actor }}\nWorkflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}]}" \
+              "$SLACK_WEBHOOK_URL"
           fi

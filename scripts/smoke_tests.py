@@ -128,7 +128,7 @@ class SmokeTests:
             tests_failed += 1
 
         # Test 3: Check for nulls in primary key
-        if self.test_no_nulls_in_column("bronze", "brnz_customers", "CustomerID"):
+        if self.test_no_nulls_in_column("bronze", "brnz_customers", "customer_id"):
             tests_passed += 1
         else:
             tests_failed += 1
