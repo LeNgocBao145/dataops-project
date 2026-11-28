@@ -8,26 +8,44 @@ models:
         description: "Primary key for sales orders."
         tests:
           - not_null
+          - unique
       - name: revision_number
         description: "Incremental number to track changes to the sales order over time."
       - name: order_date
         description: "Date the sales order was created (DATE)."
+        tests:
+          - not_null
+          - valid_date_range:
+              min_date: '2011-01-01'
+              max_date: '2015-12-31'
       - name: due_date
         description: "Date the order is due to the customer (DATE)."
       - name: ship_date
         description: "Date the order was shipped to the customer (DATE)."
       - name: status
         description: "Order current status integer (1=In Process, 2=Approved, 3=Backordered, 4=Rejected, 5=Shipped, 6=Cancelled)."
+        tests:
+          - not_null
+          - accepted_values:
+              values: [1, 2, 3, 4, 5, 6]
       - name: online_order_flag
         description: "Flag indicating whether the order was placed online by the customer (1) or by a sales person (0)."
+        tests:
+          - accepted_values:
+              values: [0, 1]
       - name: sales_order_number
         description: "Unique sales order identification number."
+        tests:
+          - not_null
+          - unique
       - name: purchase_order_number
         description: "Customer purchase order number reference."
       - name: account_number
         description: "Financial accounting number reference."
       - name: customer_id
         description: "Customer identification number (foreign key to Sales.Customer)."
+        tests:
+          - not_null
       - name: sales_person_id
         description: "Sales person who created the sales order."
       - name: territory_id
@@ -40,16 +58,36 @@ models:
         description: "Shipping method identifier."
       - name: sub_total
         description: "Sales subtotal amount (DECIMAL(18, 4))."
+        tests:
+          - positive_values:
+              allow_zero: true
       - name: tax_amt
         description: "Tax amount (DECIMAL(18, 4))."
+        tests:
+          - positive_values:
+              allow_zero: true
       - name: freight
         description: "Shipping cost (DECIMAL(18, 4))."
+        tests:
+          - positive_values:
+              allow_zero: true
       - name: total_due
         description: "Total due from customer: sub_total + tax_amt + freight (DECIMAL(18, 4))."
+        tests:
+          - positive_values:
+              allow_zero: true
       - name: modified_date
         description: "Timestamp when the source record was last modified."
+        tests:
+          - not_null
       - name: loaded_at
         description: "Audit timestamp when the record was loaded into the bronze layer."
+        tests:
+          - not_null
+    tests:
+      - date_order:
+          start_date_column: order_date
+          end_date_column: due_date
 
   - name: brnz_sales_order_detail
     description: "1-1 staging view for Sales.SalesOrderDetail with standardized columns, coalesced numerics, and audit timestamp."
@@ -66,20 +104,45 @@ models:
         description: "Shipment tracking number supplied by the shipper."
       - name: order_qty
         description: "Quantity ordered per product."
+        tests:
+          - not_null
+          - positive_values
       - name: product_id
         description: "Product sold to customer (foreign key to Production.Product)."
+        tests:
+          - not_null
       - name: special_offer_id
         description: "Promotional code / special offer identifier."
       - name: unit_price
         description: "Selling price of a single product (DECIMAL(18, 4))."
+        tests:
+          - not_null
+          - positive_values:
+              allow_zero: true
       - name: unit_price_discount
         description: "Discount percentage applied to unit price, coalesced to 0 (DECIMAL(18, 4))."
+        tests:
+          - percentage_range:
+              min_value: 0
+              max_value: 1
       - name: line_total
         description: "Source per-product subtotal (DECIMAL(18, 4))."
+        tests:
+          - positive_values:
+              allow_zero: true
       - name: modified_date
         description: "Timestamp when the source record was last modified."
+        tests:
+          - not_null
       - name: loaded_at
         description: "Audit timestamp when the record was loaded into the bronze layer."
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - sales_order_id
+            - sales_order_detail_id
 
   - name: brnz_products
     description: "1-1 staging view for Production.Product with standardized columns and types."
@@ -88,46 +151,89 @@ models:
         description: "Primary key for Product records."
         tests:
           - not_null
+          - unique
       - name: product_name
         description: "Name of the product."
+        tests:
+          - not_null
       - name: product_number
         description: "Unique product identification number (SKU)."
+        tests:
+          - not_null
+          - unique
       - name: make_flag
         description: "0 = Product is purchased, 1 = Product is manufactured in-house."
+        tests:
+          - accepted_values:
+              values: [0, 1]
       - name: finished_goods_flag
         description: "0 = Product is not a salable item, 1 = Product is salable."
+        tests:
+          - accepted_values:
+              values: [0, 1]
       - name: color
         description: "Product color."
       - name: safety_stock_level
         description: "Minimum inventory quantity."
+        tests:
+          - positive_values
       - name: reorder_point
         description: "Inventory level that triggers a purchase order or work order."
+        tests:
+          - positive_values
       - name: standard_cost
         description: "Standard cost of the product (DECIMAL(18, 4))."
+        tests:
+          - positive_values:
+              allow_zero: true
       - name: list_price
         description: "Selling list price (DECIMAL(18, 4))."
+        tests:
+          - positive_values:
+              allow_zero: true
       - name: size
         description: "Product size."
       - name: product_line
         description: "R = Road, M = Mountain, T = Touring, S = Standard."
+        tests:
+          - accepted_values:
+              values: ['R', 'M', 'T', 'S']
+              quote: true
+              where: "product_line IS NOT NULL"
       - name: product_class
         description: "H = High, M = Medium, L = Low."
+        tests:
+          - accepted_values:
+              values: ['H', 'M', 'L']
+              quote: true
+              where: "product_class IS NOT NULL"
       - name: product_style
         description: "W = Womens, M = Mens, U = Universal."
+        tests:
+          - accepted_values:
+              values: ['W', 'M', 'U']
+              quote: true
+              where: "product_style IS NOT NULL"
       - name: product_subcategory_id
         description: "Foreign key to Production.ProductSubcategory."
       - name: product_model_id
         description: "Foreign key to Production.ProductModel."
       - name: sell_start_date
         description: "Date the product was available for sale."
+        tests:
+          - not_null
       - name: sell_end_date
         description: "Date the product was no longer available for sale."
       - name: discontinued_date
         description: "Date the product was discontinued."
       - name: modified_date
         description: "Timestamp when the source record was last modified."
+        tests:
+          - not_null
       - name: loaded_at
         description: "Audit timestamp when the record was loaded into the bronze layer."
+        tests:
+          - not_null
 
   - name: brnz_product_subcategories
     description: "1-1 staging view for Production.ProductSubcategory."
@@ -136,12 +242,22 @@ models:
         description: "Primary key for ProductSubcategory records."
         tests:
           - not_null
+          - unique
       - name: product_category_id
         description: "Foreign key to Production.ProductCategory."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('brnz_product_categories')
+              field: product_category_id
       - name: subcategory_name
         description: "Product subcategory name."
+        tests:
+          - not_null
       - name: modified_date
         description: "Timestamp when the source record was last modified."
+        tests:
+          - not_null
       - name: loaded_at
         description: "Audit timestamp when the record was loaded into the bronze layer."
 
@@ -152,10 +268,16 @@ models:
         description: "Primary key for ProductCategory records."
         tests:
           - not_null
+          - unique
       - name: category_name
         description: "Product category name."
+        tests:
+          - not_null
+          - unique
       - name: modified_date
         description: "Timestamp when the source record was last modified."
+        tests:
+          - not_null
       - name: loaded_at
         description: "Audit timestamp when the record was loaded into the bronze layer."
 
@@ -166,22 +288,46 @@ models:
         description: "Primary key for SalesTerritory records."
         tests:
           - not_null
+          - unique
       - name: territory_name
         description: "Sales territory name."
+        tests:
+          - not_null
+          - unique
       - name: country_region_code
         description: "ISO standard country or region code."
+        tests:
+          - not_null
       - name: territory_group
         description: "Geographic group to which the sales territory belongs."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['North America', 'Europe', 'Pacific']
       - name: sales_ytd
         description: "Sales in the territory year to date (DECIMAL(18, 4))."
+        tests:
+          - positive_values:
+              allow_zero: true
       - name: sales_last_year
         description: "Sales in the territory the previous year (DECIMAL(18, 4))."
+        tests:
+          - positive_values:
+              allow_zero: true
       - name: cost_ytd
         description: "Business costs in the territory year to date (DECIMAL(18, 4))."
+        tests:
+          - positive_values:
+              allow_zero: true
       - name: cost_last_year
         description: "Business costs in the territory the previous year (DECIMAL(18, 4))."
+        tests:
+          - positive_values:
+              allow_zero: true
       - name: modified_date
         description: "Timestamp when the source record was last modified."
+        tests:
+          - not_null
       - name: loaded_at
         description: "Audit timestamp when the record was loaded into the bronze layer."
 
@@ -192,16 +338,26 @@ models:
         description: "Primary key for Customer records."
         tests:
           - not_null
+          - unique
       - name: person_id
         description: "Foreign key to Person.Person.business_entity_id."
       - name: store_id
         description: "Foreign key to Sales.Store.business_entity_id."
       - name: territory_id
         description: "Foreign key to Sales.SalesTerritory.territory_id."
+        tests:
+          - relationships:
+              to: ref('brnz_sales_territories')
+              field: territory_id
       - name: account_number
         description: "Unique customer account number."
+        tests:
+          - not_null
+          - unique
       - name: modified_date
         description: "Timestamp when the source record was last modified."
+        tests:
+          - not_null
       - name: loaded_at
         description: "Audit timestamp when the record was loaded into the bronze layer."
 
@@ -212,24 +368,41 @@ models:
         description: "Primary key for Person records."
         tests:
           - not_null
+          - unique
       - name: person_type
         description: "Primary type of person (SC, IN, SP, EM, VC, GC)."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['SC', 'IN', 'SP', 'EM', 'VC', 'GC']
       - name: name_style
         description: "0 = Western name style, 1 = Eastern name style."
+        tests:
+          - accepted_values:
+              values: [0, 1]
       - name: title
         description: "Courtesy title (e.g. Mr., Ms.)."
       - name: first_name
         description: "First name of the person."
+        tests:
+          - not_null
       - name: middle_name
         description: "Middle name or initial."
       - name: last_name
         description: "Last name of the person."
+        tests:
+          - not_null
       - name: suffix
         description: "Surname suffix."
       - name: email_promotion
         description: "Email promotion preference flag (0, 1, 2)."
+        tests:
+          - accepted_values:
+              values: [0, 1, 2]
       - name: modified_date
         description: "Timestamp when the source record was last modified."
+        tests:
+          - not_null
       - name: loaded_at
         description: "Audit timestamp when the record was loaded into the bronze layer."
 
@@ -240,11 +413,16 @@ models:
         description: "Primary key for Store records."
         tests:
           - not_null
+          - unique
       - name: store_name
         description: "Name of the store."
+        tests:
+          - not_null
       - name: sales_person_id
         description: "ID of the sales person assigned to the store."
       - name: modified_date
         description: "Timestamp when the source record was last modified."
+        tests:
+          - not_null
       - name: loaded_at
         description: "Audit timestamp when the record was loaded into the bronze layer."
