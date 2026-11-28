@@ -74,7 +74,7 @@ jobs:
           $SQLCMD -S localhost -U sa -P "$SA_PASSWORD" -Q "RESTORE DATABASE AdventureWorks2014_Test FROM DISK = '/tmp/AdventureWorks2014.bak' WITH MOVE 'AdventureWorks2014_Data' TO '/var/opt/mssql/data/AdventureWorks2014_Test.mdf', MOVE 'AdventureWorks2014_Log' TO '/var/opt/mssql/data/AdventureWorks2014_Test_log.ldf'"
           $SQLCMD -S localhost -U sa -P "$SA_PASSWORD" \
             -v DB_USER="$TEST_USER" -v DB_PASS="$TEST_PASSWORD" \
-            -Q "IF NOT EXISTS (SELECT * FROM sys.server_principals WHERE name = '$(DB_USER)') CREATE LOGIN [$(DB_USER)] WITH PASSWORD = '$(DB_PASS)'; USE AdventureWorks2014; IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = '$(DB_USER)') CREATE USER [$(DB_USER)] FOR LOGIN [$(DB_USER)]; ALTER ROLE db_owner ADD MEMBER [$(DB_USER)]; USE AdventureWorks2014_Test; IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = '$(DB_USER)') CREATE USER [$(DB_USER)] FOR LOGIN [$(DB_USER)]; ALTER ROLE db_owner ADD MEMBER [$(DB_USER)];"
+            -Q 'IF NOT EXISTS (SELECT * FROM sys.server_principals WHERE name = '\''$(DB_USER)'\'') CREATE LOGIN [$(DB_USER)] WITH PASSWORD = '\''$(DB_PASS)'\''; USE AdventureWorks2014; IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = '\''$(DB_USER)'\'') CREATE USER [$(DB_USER)] FOR LOGIN [$(DB_USER)]; ALTER ROLE db_owner ADD MEMBER [$(DB_USER)]; USE AdventureWorks2014_Test; IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = '\''$(DB_USER)'\'') CREATE USER [$(DB_USER)] FOR LOGIN [$(DB_USER)]; ALTER ROLE db_owner ADD MEMBER [$(DB_USER)];'
 
       - name: Run deployment
         env:
@@ -157,7 +157,7 @@ jobs:
           $SQLCMD -S localhost -U sa -P "$SA_PASSWORD" -Q "RESTORE DATABASE AdventureWorks2014_Prod FROM DISK = '/tmp/AdventureWorks2014.bak' WITH MOVE 'AdventureWorks2014_Data' TO '/var/opt/mssql/data/AdventureWorks2014_Prod.mdf', MOVE 'AdventureWorks2014_Log' TO '/var/opt/mssql/data/AdventureWorks2014_Prod_log.ldf'"
           $SQLCMD -S localhost -U sa -P "$SA_PASSWORD" \
             -v DB_USER="$PROD_USER" -v DB_PASS="$PROD_PASSWORD" \
-            -Q "IF NOT EXISTS (SELECT * FROM sys.server_principals WHERE name = '$(DB_USER)') CREATE LOGIN [$(DB_USER)] WITH PASSWORD = '$(DB_PASS)'; USE AdventureWorks2014; IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = '$(DB_USER)') CREATE USER [$(DB_USER)] FOR LOGIN [$(DB_USER)]; ALTER ROLE db_owner ADD MEMBER [$(DB_USER)]; USE AdventureWorks2014_Prod; IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = '$(DB_USER)') CREATE USER [$(DB_USER)] FOR LOGIN [$(DB_USER)]; ALTER ROLE db_owner ADD MEMBER [$(DB_USER)];"
+            -Q 'IF NOT EXISTS (SELECT * FROM sys.server_principals WHERE name = '\''$(DB_USER)'\'') CREATE LOGIN [$(DB_USER)] WITH PASSWORD = '\''$(DB_PASS)'\''; USE AdventureWorks2014; IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = '\''$(DB_USER)'\'') CREATE USER [$(DB_USER)] FOR LOGIN [$(DB_USER)]; ALTER ROLE db_owner ADD MEMBER [$(DB_USER)]; USE AdventureWorks2014_Prod; IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = '\''$(DB_USER)'\'') CREATE USER [$(DB_USER)] FOR LOGIN [$(DB_USER)]; ALTER ROLE db_owner ADD MEMBER [$(DB_USER)];'
 
       - name: Run deployment
         env:
