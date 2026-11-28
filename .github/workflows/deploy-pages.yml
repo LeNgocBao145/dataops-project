@@ -81,7 +81,7 @@ jobs:
             fi
             $SQLCMD -S localhost -U sa -P "$SA_PASSWORD" \
               -v DB_USER="$PROD_SQL_USER" -v DB_PASS="$PROD_SQL_PASSWORD" \
-              -Q "IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = '$(DB_USER)') CREATE LOGIN [$(DB_USER)] WITH PASSWORD = '$(DB_PASS)'; USE AdventureWorks2014; IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '$(DB_USER)') CREATE USER [$(DB_USER)] FOR LOGIN [$(DB_USER)]; ALTER ROLE db_owner ADD MEMBER [$(DB_USER)]; USE AdventureWorks2014_Prod; IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '$(DB_USER)') CREATE USER [$(DB_USER)] FOR LOGIN [$(DB_USER)]; ALTER ROLE db_owner ADD MEMBER [$(DB_USER)];"
+              -Q 'IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = '\''$(DB_USER)'\'') CREATE LOGIN [$(DB_USER)] WITH PASSWORD = '\''$(DB_PASS)'\''; USE AdventureWorks2014; IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '\''$(DB_USER)'\'') CREATE USER [$(DB_USER)] FOR LOGIN [$(DB_USER)]; ALTER ROLE db_owner ADD MEMBER [$(DB_USER)]; USE AdventureWorks2014_Prod; IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '\''$(DB_USER)'\'') CREATE USER [$(DB_USER)] FOR LOGIN [$(DB_USER)]; ALTER ROLE db_owner ADD MEMBER [$(DB_USER)];'
           fi
 
       - name: Install DBT and ODBC dependencies
