@@ -72,6 +72,8 @@ jobs:
           git checkout ${{ github.base_ref }}
 
       - name: Build Base Models and Artifacts
+        env:
+          SA_PASSWORD: ${{ secrets.SA_PASSWORD }}
         run: |
           cd dbt
           dbt deps --profiles-dir .
